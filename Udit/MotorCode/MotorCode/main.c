@@ -1,0 +1,219 @@
+/*
+ * MotorCode.c
+ *
+ * Created: 09-01-2019 23:36:44
+ * Author : TIDU
+ */ 
+#define F_CPU 1000000
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <stdlib.h>
+int X;
+int Y;
+int bitval;
+int joyval;
+int Tenbit;
+int lv;
+int joyval1;
+int joyval2;
+int flag=0;
+
+
+
+
+
+int main(void)
+{
+    DDRB|= (1<<PINB3);
+	DDRD|=(1<<PIND7);
+	DDRB|=(1<<PINB0);
+	DDRB|=(1<<PINB1);
+	
+	TCCR0|= (1<<WGM00)| (1<<WGM01)|(1<<COM01)|(1<<CS00) ; // PWM setting for pinb3, timer 0 
+	TCCR2|= (1<<WGM20)|(1<<WGM21) | (1<<COM21)| (1<<CS20) ; // PWM setting for pind7 time
+	ADC_begin();
+	sei();
+
+	
+	while(1)
+{   
+	
+
+	ADC_initialise();
+	X= joyval1;
+	
+	ADC_initialise();
+	Y= joyval2;
+	
+	drive(X,Y);
+	
+}
+
+
+
+}
+
+
+void ADC_begin()
+{
+	ADMUX |= (1<<REFS0)|(1<<ADLAR); // taking input voltage as reference & doing right shift to the result
+	ADCSRA |= 1<<ADPS2; // prescaller set to 16
+}
+
+void ADC_initialise()
+{
+ADCSRA |= 1<<ADEN;
+ADCSRA |= 1<<ADIE;
+ADCSRA|=1<<ADATE;
+
+ADCSRA |= 1<<ADSC;
+}
+
+
+
+ISR(ADC_vect)
+{
+	bitval=ADCH;
+	lv=ADCL;
+	Tenbit=(ADCH<<2|lv>>6);
+	joyval=(ADCH-512)/2;
+	if(abs(joyval)<=25)
+	{
+		joyval=0;
+	}
+	
+	
+	switch(ADMUX)
+	{
+		case 0x60:
+		{
+			joyval1=joyval;
+			ADMUX=0x61;
+			break;
+		}
+		
+		case 0x61:
+		{
+			joyval2=joyval;
+		    ADMUX=0x60;
+			break;
+		}
+		
+	}
+	
+}
+
+int drive(int X,int Y)
+{
+	
+	if(abs(X)<=30)
+	{
+		X=0;
+	}
+	if(abs(Y)<=30)
+	{
+		Y=0;
+	}
+	
+	if (X >= 0 && Y >= 0)          // First quadrant
+	{
+		int level = X - Y;
+		if (level == 0)
+		{
+			OCR0=abs(X);
+			OCR2=0;
+			PORTB=(0<<PINB0)|(0<<PINB1);
+			
+		}
+		if (level > 0)
+		{
+			
+			OCR0=abs(X);
+			OCR2=abs(X-Y);
+			PORTB=(0<<PINB0)|(1<<PINB1);
+			
+		}
+		if (level < 0)
+		{
+			OCR0=abs(Y);
+			OCR2=abs(X-Y);
+			PORTB=(0<<PINB0)|(0<<PINB1);
+		}
+	}
+	
+	if (X <= 0 && Y >= 0) // Second Quad
+	{
+		int level = X + Y;
+		if (level == 0)
+		{
+			OCR2=abs(Y);
+			OCR0=0;
+			PORTB=(0<<PINB0)|(0<<PINB1);
+		}
+		if (level > 0)
+		{
+			OCR0=abs(level);
+			OCR2=abs(Y);
+			PORTB=(0<<PINB0)|(0<<PINB1);
+
+		}
+		if (level < 0)
+		{
+			OCR0=abs(level);
+			OCR2=abs(X);
+			PORTB=(1<<PINB0)|(0<<PINB1);
+		}
+	}
+	
+	
+	if (X >= 0 && Y <= 0) // Fourth quad
+	{
+		int level = X + Y;
+		if (level == 0)
+		{
+			OCR0=abs(0);
+			OCR2=abs(Y);
+			PORTB=(0<<PINB0)|(1<<PINB1);
+		}
+		if (level > 0)
+		{
+			OCR0=abs(X+Y);
+			OCR2=abs(X);
+			PORTB=(0<<PINB0)|(1<<PINB1);
+
+		}
+		if (level < 0)
+		{
+			OCR0=abs(X+Y);
+			OCR2=abs(Y);
+			PORTB=(1<<PINB0)|(1<<PINB1);
+		}
+	}
+	
+	
+	if (X <= 0 && Y <=0) // Third quad
+	{
+		int level = X - Y;
+		if (level == 0)
+		{
+			OCR0=abs(X);
+			OCR2=abs(0);
+			PORTB=(1<<PINB0)|(0<<PINB1);
+		}
+		if (level > 0)
+		{
+			
+			OCR0=abs(Y);
+			OCR2=abs(X-Y);
+			PORTB=(1<<PINB0)|(1<<PINB1);
+		}
+		if (level < 0)
+		{
+			OCR0=abs(X);
+			OCR2=abs(X-Y);
+			PORTB=(1<<PINB0)|(0<<PINB1);
+			
+		}
+	}
+	return 0;
+}
