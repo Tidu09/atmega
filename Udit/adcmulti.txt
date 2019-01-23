@@ -1,0 +1,50 @@
+/*
+ * DualADCwithPolling.c
+ *
+ * Created: 16-01-2019 11:06:16
+ * Author : TIDU
+ */ 
+
+#include <avr/io.h>
+#include <stdlib.h>
+#include <util/delay.h>
+
+int main(void)
+{   TCCR0 |= 1<<WGM00 | 1<<WGM01 | 1<<COM01 | 1<<CS00;
+	DDRB |= 1<<PINB3;
+	TCCR2|=1<<WGM20| 1<<WGM21| 1<<COM21| 1<<CS20;
+	DDRD|=1<<PIND7;
+	
+	/* Replace with your application code */
+	while (1)
+	{
+		ADC_initialise();
+		uint8_t ADCres0=ADC_channel(0);
+		OCR0=ADCres0;
+        _delay_ms(2);
+		
+		ADC_initialise();
+		uint8_t ADCres1=ADC_channel(1);
+		OCR2=ADCres1;
+	}
+}
+
+void ADC_initialise(void)
+{
+	ADMUX=(1<<REFS0)|(1<<ADLAR);
+	ADCSRA=(1<<ADEN)|(1<<ADPS2);
+	
+}
+
+int ADC_channel(int channel)
+{
+	channel &= 0b00000111;
+	ADMUX|=channel;
+	ADCSRA|=(1<<ADSC);
+	while((ADCSRA & (1<<ADSC)))
+	
+	_delay_ms (10);
+	ADCSRA|=(1<<ADIF);
+	return(ADCH);
+}
+

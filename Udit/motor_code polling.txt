@@ -1,107 +1,71 @@
-/*
- * MotorCode.c
- *
- * Created: 09-01-2019 23:36:44
- * Author : TIDU
- */ 
-#define F_CPU 1000000
+//*************SET joystix X at channel 1 and Y at channel 2;     codes X at reads from channel 2 and Y at channel 1;
 #include <avr/io.h>
-#include <avr/interrupt.h>
 #include <stdlib.h>
-int X;
-int Y;
-int bitval;
-int joyval;
-int Tenbit;
-int lv;
-int joyval1;
-int joyval2;
-int flag=0;
-
-
-
-
+#include <util/delay.h>
+	int X;
+	int Y;
+	uint16_t bitval;
+	int joyval;
+	uint16_t Tenbit;
+	uint8_t lv;
+	uint8_t joyval1;
+	uint8_t joyval2;
 
 int main(void)
+
 {
-    DDRB|= (1<<PINB3);
+	DDRB|= (1<<PINB3);
 	DDRD|=(1<<PIND7);
 	DDRB|=(1<<PINB0);
 	DDRB|=(1<<PINB1);
-	
-	TCCR0|= (1<<WGM00)| (1<<WGM01)|(1<<COM01)|(1<<CS00) ; // PWM setting for pinb3, timer 0 
-	TCCR2|= (1<<WGM20)|(1<<WGM21) | (1<<COM21)| (1<<CS20) ; // PWM setting for pind7 time
-	ADC_begin();
-	sei();
+	   TCCR0 |= 1<<WGM00 | 1<<WGM01 | 1<<COM01 | 1<<CS00;
+	TCCR2|=1<<WGM20| 1<<WGM21| 1<<COM21| 1<<CS20;
 
 	
-	while(1)
-{   
-	
-
-	ADC_initialise();
-	X= joyval1;
-	
-	ADC_initialise();
-	Y= joyval2;
-	
-	drive(X,Y);
-	
-}
-
-
-
-}
-
-
-void ADC_begin()
-{
-	ADMUX |= (1<<REFS0)|(1<<ADLAR); // taking input voltage as reference & doing right shift to the result
-	ADCSRA |= 1<<ADPS2; // prescaller set to 16
-}
-
-void ADC_initialise()
-{
-ADCSRA |= 1<<ADEN;
-ADCSRA |= 1<<ADIE;
-ADCSRA|=1<<ADATE;
-
-ADCSRA |= 1<<ADSC;
-}
-
-
-
-ISR(ADC_vect)
-{
-	bitval=ADCH;
-	lv=ADCL;
-	Tenbit=(ADCH<<2|lv>>6);
-	joyval=(ADCH-512)/2;
-	if(abs(joyval)<=25)
+	/* Replace with your application code */
+	while (1)
 	{
-		joyval=0;
-	}
-	
-	
-	switch(ADMUX)
-	{
-		case 0x60:
-		{
-			joyval1=joyval;
-			ADMUX=0x61;
-			break;
-		}
+		ADC_initialise();
 		
-		case 0x61:
-		{
-			joyval2=joyval;
-		    ADMUX=0x60;
-			break;
-		}
+		X=(ADC_channel(2));
 		
+		
+		//_delay_ms(2);
+		
+		ADC_initialise();
+		 Y=(ADC_channel(1));
+		 
+		 drive(X,Y);
+			
 	}
+	}
+
+
+
+void ADC_initialise(void)
+{
+	ADMUX=(1<<REFS0)|(1<<ADLAR);
+	ADCSRA=(1<<ADEN)|(1<<ADPS2);
+	//MCUCR=(1<<SM0);
 	
 }
+
+int ADC_channel(int channel)
+{
+	channel &= 0b00000111;
+	ADMUX|=channel;
+	ADCSRA|=(1<<ADSC);
+	while((ADCSRA & (1<<ADSC)))
+	
+	//_delay_ms (10);
+	ADCSRA|=(1<<ADIF);
+	 lv=ADCL;
+	Tenbit=ADCH<<6|lv>>2;
+	
+		 joyval	=(ADCH-128);
+	return(joyval);
+}
+
 
 int drive(int X,int Y)
 {
@@ -145,7 +109,7 @@ int drive(int X,int Y)
 	{
 		int level = X + Y;
 		if (level == 0)
-		{
+		{   
 			OCR2=abs(Y);
 			OCR0=0;
 			PORTB=(0<<PINB0)|(0<<PINB1);
@@ -217,3 +181,4 @@ int drive(int X,int Y)
 	}
 	return 0;
 }
+
