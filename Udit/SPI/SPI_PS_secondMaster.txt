@@ -1,0 +1,146 @@
+/*
+ * SPI _PS_Transmit.c
+ *
+ * Created: 30-01-2019 11:02:23
+ * Author : TIDU
+ */ 
+
+#include <avr/io.h>
+#include <stdlib.h>
+#include <util/delay.h>
+int last_state;
+int current_state;
+int but_state;
+int u=2;
+int l;
+int flag=1;
+int count=0;
+
+int main(void)
+{   
+    DDRC|=(1<<PINC0);
+    PORTB&=~(1<<PINB3);
+	DDRD&=~(1<<PIND7); // Switch input;
+	PORTD|=(1<<PIND7);
+	
+    //blink(8); 
+	  
+	    /* Replace with your application code */
+    while (1) 
+    { 
+		switch(u)
+		{ 
+			case 1:
+			{
+				Master_ini();
+				Press();
+				break;
+			}
+			case 2:
+			{ 
+				Slave_initialize();
+				
+				l= Recieve();
+				
+				if(l==1)
+				{
+					//PORTB|=(1<<PINB3);
+					blink(2);
+					u=1;
+					break;
+				}
+			}
+			
+		}
+		
+	 
+     
+	 
+	 
+    }
+	   
+
+}
+
+void Master_ini(void)
+{
+//	DDRB=0b00000000;
+	DDRB=(1<<PINB5)|(1<<PINB7)|(1<<PINB4);             // setting MOSI and SCK as OUTPUT, SS too;
+    SPCR=(1<<SPE)|(1<<MSTR)|(1<<SPR0);  	// enabling SPI, setting Master SPI mode, setting SCK frequency as 1/16 of occilator; 
+	PORTB&=~(1<<PINB4);
+}
+
+
+
+
+void Transmit(int data)
+{   blink(3);
+	SPDR= data;
+	while(!(SPSR & (1<<SPIF)));
+    PORTB|=(1<<PINB4);
+    //SPDR=0b00000000;
+}
+
+
+
+
+int Slave_initialize()
+{   
+	DDRB=(1<<PINB6);
+	SPCR=(1<<SPE);
+	SPSR=(0b00000000);
+}
+
+
+
+int Recieve(void)
+{
+	while(!(SPSR & (1<<SPIF)));
+	return SPDR;
+	//SPDR=0b00000000;
+}
+
+
+  	
+ void Press()
+{
+	but_state=debounce(last_state);
+	if(but_state==0 && last_state==1)
+	{  
+			
+			Transmit(1);	
+			 u=2;
+	}
+	last_state=but_state;
+}
+
+
+int debounce(int last_state)
+{
+	int current_state=((PIND &(1<<PIND7))>>PIND7);
+	if(current_state != last_state)
+	{
+		_delay_ms(5);
+		current_state=(PIND &(1<<PIND7))>>PIND7;
+	}
+	return(current_state);
+}
+
+
+void blink(int t)
+{
+	 while(flag=1)
+	 {   	
+		 PORTC^=(1<<PINC0);
+		 _delay_ms(100);
+		 count=count+1;
+		 if(count==2*t)
+		 {
+			 flag=0;
+			 count=0;
+			 break;
+		 }
+		
+	 }
+	 
+}
