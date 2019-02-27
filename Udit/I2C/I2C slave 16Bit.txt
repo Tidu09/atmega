@@ -1,0 +1,157 @@
+
+
+/*
+ * I2C_slave.c
+ *
+ * Created: 22-02-2019 12:50:16
+ * Author : TIDU
+ */ 
+
+#include <avr/io.h>
+#include <util/delay.h>
+
+int k;
+
+int last_state;
+int current_state;
+int but_state;
+int u=0;
+int l;
+int flag=1;
+int count=0;
+int t=0;
+
+uint16_t a,b,sum,prod;
+
+
+int main(void)
+{
+	DDRB|=(1<<PINB0);
+	DDRD&=~(1<<PIND7); // Switch input;
+	PORTD|=(1<<PIND7);
+	
+    /* Replace with your application code */
+    while (1) 
+    {   
+	  /* a=recieve() ;
+	   b=recieve() ;
+	   
+	   sum=(a<<8|b);
+	 //  prod=a*10 + b*10;
+	   if(sum==5000)
+	   {
+		   blink(2);
+	   }*/
+	  recieve();
+	  send(3);
+	//Press()	   
+		 
+    }
+}
+
+
+void I2C_slave_initialize(unsigned char address)                   //  setting slave address and initializing 
+{
+	TWCR=0x04;
+	TWAR=address;
+	TWCR=(1<<TWINT)|(1<<TWEN)|(1<<TWEA);
+}
+void I2C_send(unsigned char data)                            // transmission
+{   if(data==3)
+	{
+		blink(3);
+		u=0;
+	}
+	TWDR=data;
+	TWCR=(1<<TWINT)|(1<<TWEN);
+	while((TWCR & (1<<TWINT))==0);
+}
+
+void I2C_listen()                               
+{
+	while((TWCR & (1<<TWINT))==0);
+}
+unsigned char I2C_read()
+{
+	TWCR=(1<<TWINT)|(1<<TWEN);
+	while((TWCR & (1<<TWINT))==0) ;
+	return TWDR;
+}
+
+void recieve()
+{
+	I2C_slave_initialize(0b00000000);
+	
+	I2C_listen();
+	k=I2C_read();
+	if(k==2)
+	{
+		blink(2);
+		//u=1;
+	}
+	return k;
+}
+
+void send(int l)
+{
+	
+	I2C_slave_initialize(0b00000000);
+	I2C_listen();
+	I2C_send(l);
+}
+
+
+
+void Press()
+{
+	but_state=debounce(last_state);
+	if(but_state==0 && last_state==1)
+	{
+		send(3);
+		//PORTB^=(1<<PINB0);
+		
+	}
+	else
+	{
+		send(5);
+	}
+	last_state=but_state;
+}
+
+
+int debounce(int last_state)
+{
+	int current_state=((PIND &(1<<PIND7))>>PIND7);
+	if(current_state != last_state)
+	{
+		_delay_ms(5);
+		current_state=(PIND &(1<<PIND7))>>PIND7;
+	}
+	return(current_state);
+}
+
+
+void blink(int t)
+{
+	while(flag=1)
+	{
+		PORTB^=(1<<PINB0);
+		_delay_ms(100);
+		count=count+1;
+		if(count==2*t)
+		{
+			flag=0;
+			count=0;
+			break;
+		}
+		
+	}
+	
+}
+
+
+
+
+
+
+

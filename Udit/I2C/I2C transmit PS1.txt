@@ -1,0 +1,163 @@
+/*
+ * I2C_transmit.c
+ *
+ * Created: 21-02-2019 16:16:19
+ * Author : TIDU
+ */ 
+
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <avr/delay.h>
+
+int k;
+
+int last_state;
+int current_state;
+int but_state;
+int u=0;
+int l;
+int flag=1;
+int count=0;
+int t=0;
+
+
+
+
+int main(void)
+{   DDRB|=(1<<PINB0);
+	DDRD&=~(1<<PIND7); // Switch input;
+	PORTD|=(1<<PIND7);
+
+    while (1) 
+    {
+		Press();
+		 
+    }
+}
+
+void I2C_write(unsigned char data)
+{  
+	if(data==2)
+	{
+		blink(1);
+	}
+	TWDR=data;
+	TWCR=(1<<TWINT)|(1<<TWEN);
+	while((TWCR & (1<<TWINT))==0) ;
+}
+
+void I2C_start(void)
+{
+	TWCR=(1<<TWINT)|(1<<TWSTA)|(1<<TWEN);
+	while((TWCR & (1<<TWINT))==0);
+}
+
+void I2C_stop()
+{
+	TWCR= (1<<TWINT)|(1<<TWEN)|(1<<TWSTO);	
+}
+
+void I2C_initialize()
+{
+	TWSR = 0x00;
+	TWBR = 0x47;
+	TWCR = 0x04;
+}
+
+unsigned char I2C_read ()
+{
+	TWCR=(1<<TWINT)|(1<<TWEN);
+    while((TWCR & (1<<TWINT))==0) ;
+	return TWDR;
+	
+}
+
+void send()
+{
+	I2C_initialize();
+	I2C_start();
+	I2C_write(0b00000001);
+	I2C_write(2);
+	I2C_stop();
+}
+
+void recieve()
+{
+	I2C_initialize();
+	I2C_start();
+	I2C_write(0b00000001);
+	k=I2C_read();
+	if(k==1)
+	{
+	blink(4);
+	u=0;
+	}
+	I2C_stop();
+}
+
+
+void repeated_start()
+{ 
+	I2C_initialize();
+	I2C_start();
+	I2C_write(0b00000000);
+	I2C_write(2);
+	I2C_start();
+	I2C_write(0b00000001);
+	k=I2C_read();
+	if(k==3)
+	{
+		blink(4);
+		
+	}
+	I2C_stop();
+	
+}
+
+void Press()
+{
+	but_state=debounce(last_state);
+	if(but_state==0 && last_state==1)
+	{
+        //send();
+		 repeated_start();
+		//u=1;
+		//PORTB^=(1<<PINB0);
+		
+	}
+	last_state=but_state;
+}
+
+
+int debounce(int last_state)
+{
+	int current_state=((PIND &(1<<PIND7))>>PIND7);
+	if(current_state != last_state)
+	{
+		_delay_ms(5);
+		current_state=(PIND &(1<<PIND7))>>PIND7;
+	}
+	return(current_state);
+}
+
+
+
+
+void blink(int t)
+{
+	while(flag=1)
+	{
+		PORTB^=(1<<PINB0);
+		_delay_ms(100);
+		count=count+1;
+		if(count==2*t)
+		{
+			flag=0;
+			count=0;
+			break;
+		}
+		
+	}
+	
+}
+
