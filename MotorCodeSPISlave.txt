@@ -1,0 +1,153 @@
+/*
+ * MotorCodeSPIReceive.c
+ *
+ * Created: 2/7/2019 6:34:32 PM
+ * Author : DELL
+ */ 
+
+#include <avr/io.h>
+#include <avr/interrupt.h>
+#include <math.h>
+
+uint8_t receiveval, x1, x2, y1, y2,rec;
+uint16_t fin,x,y;
+int pwmx,pwmy,a,b,q;
+
+int octant(int p, int q)
+{
+	int c=0;
+	if(p==0 && q==0) c=0;
+	else if(p>=0 && q<=0)
+	{
+		if(p+q>0) c=1;
+		else c=2;
+	}
+	else if(p<=0 && q<=0)
+	{
+		if(p-q>0) c=3;
+		else c=4;
+	}
+	else if(p<=0 && q>0)
+	{
+		if(p+q>0) c=6;
+		else c=5;
+	}
+	else if(p>=0 && q>0)
+	{
+		if(p-q>0) c=8;
+		else c=7;
+	}
+	return c;
+}
+
+void direction(int z)
+{
+	if(z==5) z=8;
+	else if(z==8) z=5;
+	
+	if(z==0)
+	{
+		PORTB &= ~(1<<PINB0);
+		PORTB &= ~(1<<PINB1);
+	}
+	else if(z==1 || z==5)
+	{
+		PORTB &= ~(1<<PINB1);
+		PORTB |= (1<<PINB0);
+	}
+	else if(z==2 || z==3)
+	{
+		PORTB |= (1<<PINB0);
+		PORTB |= (1<<PINB1);
+	}
+	else if(z==4 || z==8)
+	{
+		PORTB |= (1<<PINB1);
+		PORTB &= ~(1<<PINB0);
+	}
+	else if(z==6 || z==7)
+	{
+		PORTB &= ~(1<<PINB0);
+		PORTB &= ~(1<<PINB1);
+	}
+}
+
+void SPI_SlaveInit()
+{
+	//MISO output, others input
+	DDRB |= (1<<PINB6);
+	DDRB &= ~(1<<PINB5);
+	DDRB &= ~(1<<PINB7);
+	DDRB &= ~(1<<PINB4);
+	SPCR = (1<<SPE) | (1<<SPR0) | (1<<DORD); //enable SPI
+}
+
+uint8_t SPI_SlaveReceive()
+{
+	while(!(SPSR & (1<<SPIF))); //wait for receive complete
+	rec = SPDR;
+	return rec;
+}
+
+int main(void)
+{
+	TCCR1A|= (1<<WGM10)|(1<<WGM11)|(1<<COM1A1)|(1<<COM1B1);
+	TCCR1B|= (1<<WGM12)|(1<<CS10);
+	DDRD |= 1<<PIND4; //right
+	DDRD |= 1<<PIND5; //left
+	DDRB |= 1<<PINB0 | 1<<PINB1;
+	PORTB &= ~(1<<PINB0); //right
+	PORTB &= ~(1<<PINB1); //left
+	
+	SPI_SlaveInit();
+	
+	while (1)
+	{
+		receiveval = SPI_SlaveReceive();
+		if((receiveval & 0b00000011)==0b00000000)
+		{
+			x1=receiveval;
+			x1=x1>>2;
+		}
+		else if((receiveval & 0b00000011)==0b00000001)
+		{
+			x2=receiveval;
+			x2=x2>>2;
+		}
+		else if((receiveval & 0b00000011)==0b00000010)
+		{
+			y1=receiveval;
+			y1=y1>>2;
+		}
+		else if((receiveval & 0b00000011)==0b00000011)
+		{
+			y2=receiveval;
+			y2=y2>>2;
+		}
+		
+		x=x2;
+		x=x<<6 | x1;
+		y=y2;
+		y=y<<6 | y1;
+		pwmx=((x*2)-1023);
+		pwmy=((y*2)-1023);
+		
+		{
+			a=abs(pwmx);
+			b=abs(pwmy);
+			if(a<210) pwmx=0;
+			if(b<210) pwmy=0;
+			
+			q=octant(pwmx,pwmy);
+			direction(q);
+			
+			a=abs(pwmx+pwmy);
+			b=abs(pwmx-pwmy);
+			if(a>1023) a=1023;
+			if(b>1023) b=1023;
+			
+			OCR1B=(a); //right
+			OCR1A=(b); //left
+		}
+	}
+}
