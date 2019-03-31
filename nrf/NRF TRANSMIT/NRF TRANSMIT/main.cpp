@@ -314,7 +314,8 @@ int main(void)
 	DDRD|=(1<<PD7);
 	
      while (1) 
-     {PORTB |=(1<<PB1);
+     {
+		 PORTB |=(1<<PB1);
 	  nrf24l01_int();
 	  transmit(x,y); 
     }
