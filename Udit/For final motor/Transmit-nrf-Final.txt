@@ -1,0 +1,270 @@
+
+/*
+ * Comp to atmega for NRF.c
+ *
+ * Created: 28-03-2019 14:12:50
+ * Author : TIDU
+ */ 
+
+
+#include <avr/io.h>
+#include <stdlib.h>
+#include <util/delay.h>
+#include "C:\Users\TIDU\Documents\Atmel Studio\7.0\Nrf\nrf24l01 library\nrf24l01 library\library.c"
+
+
+unsigned int UBBRval=12;  
+
+int joyval;
+
+int X;
+int Y;
+int joy;
+int Tenbit1;
+int Tenbit2;
+int Tenbit3;
+int Tenbit4;
+int tenbitx;
+int tenbity;
+uint8_t gear1, gear2,gear3,gear4,gear;
+
+
+
+int main(void)
+{    
+  
+	Uart_initialize(UBBRval);
+	 DDRC|=1<<PINC0;
+		spi();
+	
+    /* Replace with your application code */
+    while (1) 
+    {  
+		
+		
+		
+	//************  pkt from joystick **************************************************	
+		
+	joy=Receive();
+		condition(joy);      
+	    
+			
+			joy=Receive();
+			condition(joy);
+			
+				
+				joy=Receive();
+				condition(joy);
+				
+				    
+				    joy=Receive();
+				    condition(joy);
+		
+	
+		
+//*************************************************************** assembly and transmit *******************************
+         
+			 
+			tenbitx=(Tenbit2<<5)|(Tenbit1);
+			tenbity=(Tenbit4<<5)|(Tenbit3);
+			gear=gear1|gear2|gear3|gear4;	               
+			
+			  PORTB |=(1<<PINB2);
+			  nrf24l01_int();
+			
+		    transmit(tenbitx,tenbity);
+		
+
+}
+				
+    }
+
+//************************************************** UART Initialize and recieve ****************************************************
+
+void Uart_initialize(unsigned int UBBRval)
+{
+	UBRRH=(unsigned char) (UBBRval>>8);
+	UBRRL=(unsigned char) (UBBRval);
+	UCSRB=(1<<RXEN)|(TXEN);
+	UCSRC=(1<<URSEL)|(1<<USBS)|(1<<UCSZ1)|(1<<UCSZ0);
+//	UCSRA=1<<U2X;
+	
+}
+
+
+int Receive(void)
+{ //  PORTC^=(1<<PINC0);
+	while(!(UCSRA & (1<<RXC)));
+	return UDR;
+	
+}
+
+
+// ************************************************************************* Masking decipher *************************************************
+void condition(int joy)
+{
+	if ((joy & 0b11000000)==0b11000000)
+	{
+		Tenbit2=joy;
+		
+		gear2=(Tenbit2 & 0b00100000);
+		gear2=gear2>>4;
+		Tenbit2 &=0b00011111;
+		
+	}
+	
+	
+	else if ((joy & 0b11000000)==0b10000000)
+	{
+		Tenbit1=joy;
+		
+		gear1=(Tenbit1 & 0b00100000);
+		gear1=gear1>>5;
+		Tenbit1 &=0b00011111;
+		
+		
+	}
+	
+	else if ((joy & 0b11000000)==0b00000000)
+	{
+		Tenbit4=joy;
+		gear4=(Tenbit4 & 0b00100000);
+		gear4=gear4>>2;
+		Tenbit4 &=0b00011111;
+		
+	}
+	
+	else if((joy & 0b11000000)==0b01000000)
+	{
+		Tenbit3=joy;
+		gear3=(Tenbit3 & 0b00100000);
+		gear3=gear3>>3;
+		Tenbit3 &=0b00011111;
+		
+	}
+	
+}
+	
+
+//******************************************************** Nrf and SPI *******************************************************************
+
+
+void spi(void)
+{
+	DDRB |=(1<<PINB5)|(1<<PINB7)|(1<<PINB4)|(1<<PINB1); // MOSI SCK SS CE
+	DDRB&=~(1<<PINB6);//MISO
+	SPCR|=(1<<SPE)|(1<<MSTR)|(1<<SPR0); //FOSC/32
+	DDRB|=(1<<PINB4); // SS HIGH
+	PORTB &=~(1<<PINB2);//CE
+	
+}
+
+uint8_t  spi_transceiver ( uint8_t  val )  //uint8t transfer
+{   SPDR=val;
+	//asm volatile("nop");
+	while(!(SPSR&(1<<SPIF)));
+	return (SPDR);
+}
+
+
+uint8_t read_byte(uint8_t reg)
+{
+	PORTB&=~(1<<PINB4);
+	//spi_transceiver(R_REGISTER|(REGISTER_MASK&reg));
+	spi_transceiver(R_REGISTER|reg);
+	reg=spi_transceiver(0xFF);
+	PORTB|=(1<<PINB4);
+	return reg;
+}
+
+
+uint8_t writenrf(uint8_t reg, uint8_t data)
+{
+	PORTB&=~(1<<PINB4);
+	uint8_t status=	spi_transceiver(W_REGISTER|(REGISTER_MASK&reg));
+	spi_transceiver(data);
+	PORTB|=(1<<PINB4);
+	return status ;
+}
+
+
+
+void flush_tx(void)
+{
+	PORTB&=~(1<<PINB4);
+	spi_transceiver(FLUSH_TX);
+	PORTB|=(1<<PINB4);
+
+	
+}
+
+void flush_Rx(void)
+{
+	PORTB&=~(1<<PINB4);
+	spi_transceiver(FLUSH_RX);
+	PORTB|=(1<<PINB4);
+}
+
+
+
+void nrf24l01_int(void)
+{
+	writenrf(EN_AA,0x01);
+	writenrf(EN_RXADDR,0x01);
+	writenrf(SETUP_AW,0x03);
+	writenrf(RF_CH,0x78);
+	writenrf(RF_SETUP,0x26);
+	writenrf(FEATURE,0x00);
+	
+	PORTB&=~(1<<PINB4);
+	spi_transceiver(W_REGISTER+RX_ADDR_P0);
+	spi_transceiver(0X01);
+	spi_transceiver(0x01);
+	spi_transceiver(0x01);
+	spi_transceiver(0x01);
+	spi_transceiver(0x01);
+	PORTB|=(1<<PINB4);
+	
+	
+	PORTB&=~(1<<PINB4);
+	spi_transceiver(W_REGISTER+TX_ADDR);
+	spi_transceiver(0x01);
+	spi_transceiver(0x01);
+	spi_transceiver(0x01);
+	spi_transceiver(0x01);
+	spi_transceiver(0x01);
+	PORTB|=(1<<PINB4);
+	
+
+	writenrf(CONFIG,0x7E);
+	writenrf(SETUP_RETR,0x14);
+	writenrf(STATUS,0x7E);
+	
+}
+
+
+void transmit( uint16_t X,uint16_t Y) // transmits two 16 bit values
+{
+	uint8_t x1,x2,y1,y2;
+	x1=X;
+	x2=X>>8;
+	
+	y1 =Y;
+	y2=Y>>8;
+	
+	
+	PORTB&=~(1<<PINB4);
+	spi_transceiver(W_TX_PAYLOAD);
+	spi_transceiver(x1);
+	spi_transceiver(x2);
+	spi_transceiver(y1);
+	spi_transceiver(y2);
+	spi_transceiver(gear);
+	PORTB|=(1<<PINB4);
+	
+	_delay_ms(20);
+	flush_tx();
+	
+}
+
+

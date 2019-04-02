@@ -1,0 +1,621 @@
+/*
+ * NRF motor recieve final.c
+ *
+ * Created: 28-03-2019 14:30:33
+ * Author : TIDU
+ */ 
+
+
+#include <avr/io.h>
+#include "C:\Users\TIDU\Documents\Atmel Studio\7.0\Nrf\nrf24l01 library\nrf24l01 library\library.c"
+#include <util/delay.h>
+
+
+int joyval;
+
+int X;
+int Y;
+int joy;
+int Tenbit1;
+int Tenbit2;
+int Tenbit3;
+int Tenbit4;
+int tenbitx;
+int tenbity;
+int hvx;
+int lvx;
+int hvy;
+int lvy;
+int gear;
+void cond_gear(int l);
+float val;
+int gear_pre;
+uint8_t Safety;
+
+
+//// ******************************************** SPI and NRF initialize *******************************************************
+void spi(void)
+{  
+	DDRB |=(1<<PINB5)|(1<<PINB7)|(1<<PINB4)|(1<<PINB1); // MOSI SCK SS CE
+	DDRB&=~(1<<PINB6);//MISO
+	SPCR|=(1<<SPE)|(1<<MSTR)|(1<<SPR0); //FOSC/32
+	
+	PORTB&=~(1<<PINB2);//CE
+	
+}
+
+uint8_t  spi_transceiver ( uint8_t  val )  //uint8t transfer
+{   SPDR=val;
+	while(!(SPSR&(1<<SPIF)));
+	return (SPDR);
+}
+
+
+uint8_t read_byte(uint8_t reg)
+{
+	PORTB&=~(1<<PINB4);
+    spi_transceiver(R_REGISTER|reg);
+	reg=spi_transceiver(0xFF);
+	PORTB|=(1<<PINB4);
+	return reg;
+}
+
+
+uint8_t writenrf(uint8_t reg, uint8_t data)
+{
+	PORTB&=~(1<<PINB4);
+    uint8_t status=	spi_transceiver(W_REGISTER|(REGISTER_MASK&reg));
+	spi_transceiver(data);
+	PORTB|=(1<<PINB4);
+    return status ;
+}
+
+
+
+
+void flush_tx(void)
+{
+	PORTB&=~(1<<PB4);
+	spi_transceiver(FLUSH_TX);
+	PORTB|=(1<<PB4);
+
+	
+}
+
+void flush_Rx(void)
+{
+	PORTB&=~(1<<PB4);
+	spi_transceiver(FLUSH_RX);
+	PORTB|=(1<<PB4);
+}
+
+
+void receive(void)  // updates global variable x and y dont return anything just update two variables when u call it
+{   
+	
+	 PORTB&=~(1<<PINB4);
+	 spi_transceiver(R_RX_PAYLOAD);
+	 Tenbit1=spi_transceiver(0xFF);
+	 Tenbit2=spi_transceiver(0xFF);
+	 Tenbit3=spi_transceiver(0xFF);
+	 Tenbit4=spi_transceiver(0xFF);
+	 gear=spi_transceiver(0xFF);
+	 PORTB|=(1<<PB4);
+	 
+	 _delay_ms(20);
+	 flush_Rx();
+	 _delay_ms(20);
+	 
+ tenbitx=Tenbit1;
+ tenbitx|=(Tenbit2<<8);
+ 
+ tenbity=Tenbit3;
+ tenbity|=(Tenbit4<<8);
+ 
+  _delay_ms(20);
+  flush_Rx();
+  _delay_ms(20);
+  
+    
+   
+}
+
+
+void nrf24l01_int(void)
+{
+	    writenrf(EN_AA,0x01);
+	    writenrf(EN_RXADDR,0x01);
+	    writenrf(SETUP_AW,0x03);
+	    writenrf(RF_CH,0x78);
+	    writenrf(RF_SETUP,0x26); //0b0010 0110
+	    writenrf(FEATURE ,0x00);    // could be written to 0x01;
+	 
+	    PORTB&=~(1<<PINB4);
+	    spi_transceiver(W_REGISTER+RX_ADDR_P0);
+		spi_transceiver(0x01);
+		spi_transceiver(0x01);
+		spi_transceiver(0x01);
+		spi_transceiver(0x01);
+		spi_transceiver(0x01);
+		PORTB|=(1<<PINB4);
+	
+	
+	    PORTB&=~(1<<PINB4);
+		spi_transceiver(W_REGISTER+TX_ADDR);
+	    spi_transceiver(0x01);
+		spi_transceiver(0x01);
+		spi_transceiver(0x01);
+		spi_transceiver(0x01);
+	    spi_transceiver(0x01);
+	    PORTB|=(1<<PINB4); 
+	
+	writenrf(RX_PW_P0,0x05);
+	writenrf(CONFIG,0x7F);  
+
+}
+
+// ********************************************* PWM initialize *****************************************************************
+
+void Pwm_initialize(void)
+{
+	DDRB|= (1<<PINB3);
+	DDRB|=(1<<PINB0)|(1<<PINB1);
+	
+	DDRD|=(1<<PIND7)|(1<<PIND4)|(1<<PIND5);
+	
+	TCCR0|= (1<<WGM00)|(1<<WGM01)|(1<<COM01)|(1<<CS01) ; // PWM setting for pinb3, timer 0
+	TCCR2|= (1<<WGM20)|(1<<WGM21)|(1<<COM21)|(1<<CS20) ; // PWM setting for pind7 time
+	
+	TCCR1A|= (1<<WGM10)|(1<<WGM11)|(1<<COM1A1)|(1<<COM1B1);
+	TCCR1B|= (1<<WGM12)|(1<<CS10);
+	
+}
+
+
+//// *************************************** Motor Code ********************************************************************
+
+
+int drive(int X,int Y)
+{
+	if(X==0 && Y==0)
+	{
+		PORTB &=~(1<<PINB0);
+		PORTB &=~(1<<PINB1);
+		OCR1A=0;
+		OCR1B=0;
+	}
+	
+	
+	
+	else  if (X >= 0 && Y >= 0)          // First quadrant
+	{
+		int level = X - Y;
+		if (level == 0)
+		{
+			OCR1A=abs(X);
+			OCR1B=0;
+			PORTB=(0<<PINB0)|(0<<PINB1);
+			
+		}
+		if (level > 0)
+		{
+			
+			OCR1A=abs(X);
+			OCR1B=abs(X-Y);
+			PORTB=(0<<PINB0)|(1<<PINB1);
+			
+		}
+		if (level < 0)
+		{
+			OCR1A=abs(Y);
+			OCR1B=abs(X-Y);
+			PORTB=(0<<PINB0)|(0<<PINB1);
+		}
+	}
+	
+	else if (X <= 0 && Y >= 0) // Second Quad
+	{
+		int level = X + Y;
+		if (level == 0)
+		{
+			OCR1B=abs(Y);
+			OCR1A=0;
+			PORTB=(0<<PINB0)|(0<<PINB1);
+		}
+		if (level > 0)
+		{
+			OCR1A=abs(X+Y);
+			OCR1B=abs(Y);
+			PORTB=(0<<PINB0)|(0<<PINB1);
+
+		}
+		if (level < 0)
+		{
+			OCR1A=abs(X+Y);
+			OCR1B=abs(X);
+			PORTB=(1<<PINB0)|(0<<PINB1);
+		}
+	}
+	
+	
+	else if (X >= 0 && Y <= 0) // Fourth quad
+	{
+		int level = X + Y;
+		if (level == 0)
+		{
+			OCR1A=abs(0);
+			OCR1B=abs(Y);
+			PORTB=(0<<PINB0)|(1<<PINB1);
+		}
+		if (level > 0)
+		{
+			OCR1A=abs(X+Y);
+			OCR1B=abs(X);
+			PORTB=(0<<PINB0)|(1<<PINB1);
+
+		}
+		if (level < 0)
+		{
+			OCR1A=abs(X+Y);
+			OCR1B=abs(Y);
+			PORTB=(1<<PINB0)|(1<<PINB1);
+		}
+	}
+	
+	
+	else if (X <=0 && Y <=0) // Third quad
+	{
+		int level = X - Y;
+		if (level == 0)
+		{
+			OCR1A=abs(X);
+			OCR1B=abs(0);
+			PORTB=(1<<PINB0)|(0<<PINB1);
+		}
+		if (level > 0)
+		{
+			
+			OCR1A=abs(Y);
+			OCR1B=abs(X-Y);
+			PORTB=(1<<PINB0)|(1<<PINB1);
+		}
+		if (level < 0)
+		{
+			OCR1A=abs(X);
+			OCR1B=abs(X-Y);
+			PORTB=(1<<PINB0)|(0<<PINB1);
+			
+		}
+	}
+	return 0;
+}
+
+//*****************************************FOR Gear ***************************************************************
+
+
+void cond_gear(int l)
+
+{ 
+	/*
+	if(l==1 )
+	{
+		tenbitx=tenbitx/10;
+		tenbity=tenbity/10;
+		X=(tenbitx*2-102);
+		Y=(tenbity*2-102);
+	}
+	else if (l==2)
+	{
+		tenbitx=(tenbitx*2)/10;
+		tenbity=(tenbity*2)/10;
+		X=(tenbitx*2-204);
+		Y=(tenbity*2-204);
+	}
+	else if (l==3)
+	{
+		tenbitx=(tenbitx*3)/10;
+		tenbity=(tenbity*3)/10;
+		X=(tenbitx*2-307);
+		Y=(tenbity*2-307);
+	}
+	else if (l==4)
+	{
+		tenbitx=(tenbitx*4)/10  ;
+		tenbity=(tenbity*4)/10;
+		X=(tenbitx*2-409);
+		Y=(tenbity*2-409);
+	}
+	
+	else if(l==5 )
+	{
+		tenbitx=(tenbitx*5)/10;
+		tenbity=(tenbity*5)/10;
+		X=(tenbitx*2-511);
+		Y=(tenbity*2-511);
+	}
+	else if (l==6)
+	{
+		tenbitx=(tenbitx*6)/10;
+		tenbity=(tenbity*6)/10;
+		X=(tenbitx*2-613);
+		Y=(tenbity*2-613);
+	}
+	else if (l==7)
+	{
+		tenbitx=(tenbitx*7)/10;
+		tenbity=(tenbity*7)/10;
+		X=(tenbitx*2-715);
+		Y=(tenbity*2-715);
+	}
+	else if (l==8)
+	{
+		tenbitx=(tenbitx*8)/10;
+		tenbity=(tenbity*8)/10;
+		X=(tenbitx*2-817);
+		Y=(tenbity*2-817);
+	}
+	
+	else if (l==9)
+	{
+		tenbitx=(tenbitx*9)/10;
+		tenbity=(tenbity*9)/10;
+		X=(tenbitx*2-920);
+		Y=(tenbity*2-920);
+	}
+	else if (l==10)
+	{
+		tenbitx=(tenbitx*10)/10;
+		tenbity=(tenbity*10)/10;
+		X=(tenbitx*2-1023);
+		Y=(tenbity*2-1023);
+	}*/
+	
+	   tenbitx=(tenbitx*gear)/10;
+	   tenbity=(tenbity*gear)/10;
+	   X=(tenbitx*2-((1023*gear)/10));
+	   Y=(tenbity*2-((1023*gear)/10));
+	
+}
+
+
+//************************************************ MAIN void ***************************************************************
+
+
+int main(void)
+{   
+	
+	UCSRC &=~(1<<URSEL);
+	unsigned int  h = 51;
+	UBRRH=(unsigned char)(h>>8);
+	UBRRL=(unsigned char)h;
+	
+	UCSRC |=(1<<URSEL)|(1<<UCSZ1)|(1<<UCSZ0);
+	UCSRB &=~(1<<UCSZ2);
+	UCSRC &=(1<<UMSEL)& ~(1<<UPM1)& ~(1<<UPM0)&(1<<USBS);
+	UCSRB |=(1<<TXEN);
+	
+	
+	spi();
+	
+	DDRD|=(1<<PD7);
+ 
+
+ Pwm_initialize();
+ 
+ 
+		
+   	
+    while (1) 
+    {	
+	
+		PORTB|=(1<<PB2); 
+		nrf24l01_int();    // Nrf initialized 
+		
+        receive();           // Recieve Nrf
+		
+		cond_gear(gear);     // check for gear
+		
+		  
+		
+//************************************ Buffer for Code **************************************
+		if(abs(X)<=40)
+		{
+			X=0;
+		}
+		
+		
+		if(abs(Y)<=40)
+		{
+			Y=0;
+		}
+
+        Safety=read_byte(STATUS);
+		
+        if(Safety==)
+		
+		sendint(X,'a');   // Show what is recieved on computer
+        sendint(Y,'b');
+		sendint(gear, 'c');
+	        drive(X,Y);
+		
+		
+    }
+}
+
+
+
+
+
+// ********************************** UART TO COMPUTER ( Ayush )  *********************************************************************************************
+
+
+
+void send( uint8_t a)
+{
+	char  abc;
+	switch(a)
+	{
+		case 0: abc='0';
+		while (!(UCSRA&(1<<UDRE)));
+		UDR= abc;
+		break;
+		case 1:abc='1';
+		while (!(UCSRA&(1<<UDRE)));
+		UDR= abc;
+		break;
+		case 2:abc='2';
+		while (!(UCSRA&(1<<UDRE)));
+		UDR= abc;
+		break;
+		case 3:abc='3';
+		while (!(UCSRA&(1<<UDRE)));
+		UDR= abc;
+		break;
+		case 4:abc='4';
+		while (!(UCSRA&(1<<UDRE)));
+		UDR= abc;
+		break;
+		case 5:abc='5';
+		while (!(UCSRA&(1<<UDRE)));
+		UDR= abc;
+		break;
+		case 6:abc='6';
+		while (!(UCSRA&(1<<UDRE)));
+		UDR= abc;
+		break;
+		case 7:abc='7';
+		while (!(UCSRA&(1<<UDRE)));
+		UDR= abc;
+		break;
+		case 8:abc='8';
+		while (!(UCSRA&(1<<UDRE)));
+		UDR= abc;
+		break;
+		case 9:abc='9';
+		while (!(UCSRA&(1<<UDRE)));
+		UDR= abc;
+		break;
+		case 10:abc='A';
+		while (!(UCSRA&(1<<UDRE)));
+		UDR= abc;
+		break;
+		case 11:abc='B';
+		while (!(UCSRA&(1<<UDRE)));
+		UDR= abc;
+		break;
+		case 12:abc='C';
+		while (!(UCSRA&(1<<UDRE)));
+		UDR= abc;
+		break;
+		case 13:abc='D';
+		while (!(UCSRA&(1<<UDRE)));
+		UDR= abc;
+		break;
+		case 14:abc='E';
+		while (!(UCSRA&(1<<UDRE)));
+		UDR= abc;
+		break;
+		case 15:abc='F';
+		while (!(UCSRA&(1<<UDRE)));
+		UDR= abc;
+		break;
+	}
+}
+
+void stc(  uint8_t status , char a)
+{
+	uint8_t k;
+	
+	while (!(UCSRA&(1<<UDRE)));
+	UDR= a;
+	while (!(UCSRA&(1<<UDRE)));
+	
+	k=(status)&0b11110000;
+	k=k>>4;
+	send(k);
+	
+	k=(status)&0b00001111;
+	send(k);
+	
+	while (!(UCSRA&(1<<UDRE)));
+	UDR= '\n';
+	
+}
+
+
+
+void sendint(int o,char p)
+{   uint8_t count=0;
+	while (!(UCSRA&(1<<UDRE)));
+	UDR= p;
+	
+	int n=0;
+	int r;
+	while(o>0)
+	{r=o%10;
+		n=n*10+r;
+		o=o/10;
+		count++;
+	}
+
+	
+	
+	
+	while(count>0)
+	{  char abc;
+		r=n%10;
+		switch(r)
+		{    case 0:abc='0';
+			while (!(UCSRA&(1<<UDRE)));
+			UDR= abc;
+			break;
+			case 1:abc='1';
+			while (!(UCSRA&(1<<UDRE)));
+			UDR= abc;
+			break;
+			case 2:abc='2';
+			while (!(UCSRA&(1<<UDRE)));
+			UDR= abc;
+			break;
+			case 3:abc='3';
+			while (!(UCSRA&(1<<UDRE)));
+			UDR= abc;
+			break;
+			case 4:abc='4';
+			while (!(UCSRA&(1<<UDRE)));
+			UDR= abc;
+			break;
+			case 5:abc='5';
+			while (!(UCSRA&(1<<UDRE)));
+			UDR= abc;
+			break;
+			case 6:abc='6';
+			while (!(UCSRA&(1<<UDRE)));
+			UDR= abc;
+			break;
+			case 7:abc='7';
+			while (!(UCSRA&(1<<UDRE)));
+			UDR= abc;
+			break;
+			case 8:abc='8';
+			while (!(UCSRA&(1<<UDRE)));
+			UDR= abc;
+			break;
+			case 9:abc='9';
+			while (!(UCSRA&(1<<UDRE)));
+			UDR= abc;
+			break;
+			
+			
+		}
+		n=n/10;
+		--count;
+	}
+	while (!(UCSRA&(1<<UDRE)));
+	UDR= '\n';
+	
+}
+
+
+
+
